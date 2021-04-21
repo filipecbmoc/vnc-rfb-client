@@ -1,0 +1,22 @@
+{
+  "name": "vnc-rfb-client",
+  "version": "0.1.0",
+  "dependencies": {},
+  "main": "vncclient.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Filipe Calaça Barbosa",
+  "license": "MIT",
+  "devDependencies": {},
+  "description": "Pure nodejs VNC (RFC 6143 / RFB Protocol) client",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/filipecbmoc/vnc-rfb-client.git"
+  },
+  "bugs": {
+    "url": "https://github.com/filipecbmoc/vnc-rfb-client/issues"
+  },
+  "homepage": "https://github.com/filipecbmoc/vnc-rfb-client#readme"
+}

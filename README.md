@@ -305,7 +305,7 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 Filipe Calaça - filipe@habilis.eng.br
 
-Project Link: [https://github.com/filipecalaca/vnc-rfb-client](https://github.com/filipecalaca/vnc-rfb-client)
+Project Link: [https://github.com/filipecbmoc/vnc-rfb-client](https://github.com/filipecbmoc/vnc-rfb-client)
 
 
 
@@ -314,19 +314,19 @@ Project Link: [https://github.com/filipecalaca/vnc-rfb-client](https://github.co
 
 [contributors-shield]: https://img.shields.io/github/contributors/github_username/repo.svg?style=for-the-badge
 
-[contributors-url]: https://github.com/filipecalaca/vnc-rfb-client/graphs/contributors
+[contributors-url]: https://github.com/filipecbmoc/vnc-rfb-client/graphs/contributors
 
 [forks-shield]: https://img.shields.io/github/forks/github_username/repo.svg?style=for-the-badge
 
-[forks-url]: https://github.com/filipecalaca/vnc-rfb-client/network/members
+[forks-url]: https://github.com/filipecbmoc/vnc-rfb-client/network/members
 
 [stars-shield]: https://img.shields.io/github/stars/github_username/repo.svg?style=for-the-badge
 
-[stars-url]: https://github.com/filipecalaca/vnc-rfb-client/stargazers
+[stars-url]: https://github.com/filipecbmoc/vnc-rfb-client/stargazers
 
 [issues-shield]: https://img.shields.io/github/issues/github_username/repo.svg?style=for-the-badge
 
-[issues-url]: https://github.com/filipecalaca/vnc-rfb-client/issues
+[issues-url]: https://github.com/filipecbmoc/vnc-rfb-client/issues
 
 [license-shield]: https://img.shields.io/github/license/github_username/repo.svg?style=for-the-badge
 

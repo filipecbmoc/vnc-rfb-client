@@ -6,8 +6,8 @@ class SocketBuffer {
 
     }
 
-    flush(keep = false) {
-        if (keep) {
+    flush(keep = true) {
+        if (keep && this.buffer?.length) {
             this.buffer = this.buffer.slice(this.offset);
             this.offset = 0;
         } else {

@@ -8,8 +8,13 @@ const ZrleDecoder = require('./decoders/zrle');
 // const tightDecoder = require('./decoders/tight');
 const CopyrectDecoder = require('./decoders/copyrect');
 const SocketBuffer = require('./socketbuffer');
+const crypto = require('crypto');
 
 class VncClient extends Events {
+
+    static get consts() {
+        return {encodings};
+    }
 
     /**
      * Return if client is connected
@@ -48,9 +53,6 @@ class VncClient extends Events {
 
         this._socketBuffer = new SocketBuffer();
 
-        this.consts = {};
-        this.consts.encodings = encodings;
-
         this.resetState();
         this.debug = options.debug || false;
         this._fps = Number(options.fps) || 0;
@@ -62,7 +64,8 @@ class VncClient extends Events {
             encodings.copyRect,
             encodings.zrle,
             encodings.hextile,
-            encodings.raw
+            encodings.raw,
+            encodings.pseudoDesktopSize
         ];
 
         this._rects = 0;
@@ -238,13 +241,19 @@ class VncClient extends Events {
             } else if (this._socketBuffer.includes(1)) {
                 this._log('Password not provided or server does not support VNC auth. Trying none.', true);
                 this._connection.write(new Buffer([0x01]));
+                if (this._version === '3.7') {
+                    this._waitingServerInit = true;
+                } else {
+                    this._expectingChallenge = true;
+                    this._challengeResponseSent = true;
+                }
             } else {
                 this._log('Connection error. Msg: ' + this._socketBuffer.toString());
                 this.disconnect();
             }
         }
 
-        this._socketBuffer?.flush();
+        this._socketBuffer?.flush(false);
 
     }
 
@@ -271,17 +280,46 @@ class VncClient extends Events {
 
         } else {
 
-            // Generating challenge response
-            const des = require('./d3des');
-            const response = des.response(this._socketBuffer.buffer, this._password);
+            const key = new Buffer(8);
+            key.fill(0);
+            key.write(this._password.slice(0, 8));
+
+            this.reverseBits(key);
+
+            const des1 = crypto.createCipheriv('des', key, new Buffer(8));
+            const des2 = crypto.createCipheriv('des', key, new Buffer(8));
+
+            const response = new Buffer(16);
+
+            response.fill(des1.update(this._socketBuffer.buffer.slice(0, 8)), 0, 8);
+            response.fill(des2.update(this._socketBuffer.buffer.slice(8, 16)), 8, 16);
 
             this._connection.write(response);
             this._challengeResponseSent = true;
 
         }
 
-        this._socketBuffer.flush();
+        this._socketBuffer.flush(false);
 
+    }
+
+    /**
+     * Reverse bits order of a byte
+     * @param buf - Buffer to be flipped
+     */
+    reverseBits(buf) {
+        for (let x = 0; x < buf.length; x++) {
+            let newByte = 0;
+            newByte += buf[x] & 128 ? 1 : 0 ;
+            newByte += buf[x] & 64 ? 2 : 0 ;
+            newByte += buf[x] & 32 ? 4 : 0 ;
+            newByte += buf[x] & 16 ? 8 : 0 ;
+            newByte += buf[x] & 8 ? 16 : 0 ;
+            newByte += buf[x] & 4 ? 32 : 0 ;
+            newByte += buf[x] & 2 ? 64 : 0 ;
+            newByte += buf[x] & 1 ? 128 : 0 ;
+            buf[x] = newByte;
+        }
     }
 
     /**
@@ -310,7 +348,7 @@ class VncClient extends Events {
         this.updateFbSize();
         this.clientName = this._socketBuffer.buffer.slice(24).toString();
 
-        this._socketBuffer.flush();
+        this._socketBuffer.flush(false);
 
         this._log(`Screen size: ${this.clientWidth}x${this.clientHeight}`);
         this._log(`Client name: ${this.clientName}`);
@@ -475,7 +513,6 @@ class VncClient extends Events {
             rect.height = this._socketBuffer.readUInt16BE();
             rect.encoding = this._socketBuffer.readInt32BE();
 
-            this._log(`Rect received. X: ${rect.x}  Y: ${rect.y}  W: ${rect.width}  H:${rect.height}`, true);
             if (rect.encoding === encodings.pseudoCursor) {
                 const dataSize = rect.width * rect.height * (this.pixelFormat.bitsPerPixel / 8);
                 const bitmaskSize = Math.floor((rect.width + 7) / 8) * rect.height;
@@ -486,16 +523,19 @@ class VncClient extends Events {
                 this._cursor.cursorPixels = this._socketBuffer.readNBytesOffset(dataSize);
                 this._cursor.bitmask = this._socketBuffer.readNBytesOffset(bitmaskSize);
                 rect.data = Buffer.concat([this._cursor.cursorPixels, this._cursor.bitmask]);
+            } else if (rect.encoding === encodings.pseudoDesktopSize) {
+                this._log('Frame Buffer size change requested by the server', true);
+                this.clientHeight = rect.height;
+                this.clientWidth = rect.width;
+                this.updateFbSize();
+                this.emit('desktopSizeChanged', {width: this.clientWidth, height: this.clientHeight});
             } else if (this._decoders[rect.encoding]) {
-                this._log('Initiating Rect decoding.', true);
                 await this._decoders[rect.encoding].decode(rect, this.fb, this.pixelFormat.bitsPerPixel, this._colorMap, this.clientWidth, this.clientHeight, this._socketBuffer, this.pixelFormat.depth);
-                this._log('Finished.', true);
             } else {
                 this._log('Non supported update received. Encoding: ' + rect.encoding);
             }
             this._rects--;
-            this._log('Rects left: ' + this._rects, true);
-            this.emit('rectReceived', rect);
+            this.emit('rectProcessed', rect);
 
             if (!this._rects) {
                 this._socketBuffer.flush(true);
@@ -504,8 +544,13 @@ class VncClient extends Events {
         }
 
         if (sendFbUpdate) {
-            this.emit('frameUpdated');
-            this._firstFrameReceived = true;
+            if (!this._firstFrameReceived){
+                this._firstFrameReceived = true;
+                this.emit('firstFrameUpdate', this.fb);
+            }
+            this._log('Frame buffer updated.', true);
+            this.emit('frameUpdated', this.fb);
+
         }
 
         this._processingFrame = false;
@@ -609,7 +654,7 @@ class VncClient extends Events {
         this._colorMap = [];
         this.fb = null;
 
-        this._socketBuffer?.flush();
+        this._socketBuffer?.flush(false);
 
         this._cursor = {
             width: 0,

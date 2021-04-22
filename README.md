@@ -186,7 +186,7 @@ client.connect({host: '127.0.0.1', port: 5900, password: 'abc123'});
 
 client.on('firstFrameUpdate', () => {
    console.log('Start recording...');
-   out = spawn('C:\\Users\\filip\\Projetos\\vncrecorder\\ffmpeg.exe',
+   out = spawn('./ffmpeg.exe',
            `-loglevel error -hide_banner -y -f rawvideo -vcodec rawvideo -an -pix_fmt rgba -s ${client.clientWidth}x${client.clientHeight} -r ${fps} -i - -an -r ${fps} -vcodec libx264rgb session.h264`.split(' '));
    timer();
 });

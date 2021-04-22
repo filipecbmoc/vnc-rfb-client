@@ -43,7 +43,7 @@ class VncClient extends Events {
         return this._connection ? this._connection.localPort : 0;
     }
 
-    constructor(options = {debug: false, fps: 4, encodings: []}) {
+    constructor(options = {debug: false, fps: 0, encodings: []}) {
         super();
 
         this._socketBuffer = new SocketBuffer();
@@ -53,7 +53,7 @@ class VncClient extends Events {
 
         this.resetState();
         this.debug = options.debug || false;
-        this._fps = Number(options.fps) || 4;
+        this._fps = Number(options.fps) || 0;
         // Calculate interval to meet configured FPS
         this._timerInterval = this._fps > 0 ? 1000 / this._fps : 0;
 
@@ -62,8 +62,7 @@ class VncClient extends Events {
             encodings.copyRect,
             encodings.zrle,
             encodings.hextile,
-            encodings.raw,
-            encodings.pseudoCursor
+            encodings.raw
         ];
 
         this._rects = 0;

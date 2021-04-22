@@ -156,6 +156,10 @@ class VncClient extends Events {
             this.emit('connectTimeout');
         });
 
+        this._connection.on('error', (err) => {
+            this.emit('connectError', err);
+        })
+
         this._connection.on('data', async (data) => {
 
             this._socketBuffer.pushData(data);
@@ -310,14 +314,14 @@ class VncClient extends Events {
     reverseBits(buf) {
         for (let x = 0; x < buf.length; x++) {
             let newByte = 0;
-            newByte += buf[x] & 128 ? 1 : 0 ;
-            newByte += buf[x] & 64 ? 2 : 0 ;
-            newByte += buf[x] & 32 ? 4 : 0 ;
-            newByte += buf[x] & 16 ? 8 : 0 ;
-            newByte += buf[x] & 8 ? 16 : 0 ;
-            newByte += buf[x] & 4 ? 32 : 0 ;
-            newByte += buf[x] & 2 ? 64 : 0 ;
-            newByte += buf[x] & 1 ? 128 : 0 ;
+            newByte += buf[x] & 128 ? 1 : 0;
+            newByte += buf[x] & 64 ? 2 : 0;
+            newByte += buf[x] & 32 ? 4 : 0;
+            newByte += buf[x] & 16 ? 8 : 0;
+            newByte += buf[x] & 8 ? 16 : 0;
+            newByte += buf[x] & 4 ? 32 : 0;
+            newByte += buf[x] & 2 ? 64 : 0;
+            newByte += buf[x] & 1 ? 128 : 0;
             buf[x] = newByte;
         }
     }
@@ -544,7 +548,7 @@ class VncClient extends Events {
         }
 
         if (sendFbUpdate) {
-            if (!this._firstFrameReceived){
+            if (!this._firstFrameReceived) {
                 this._firstFrameReceived = true;
                 this.emit('firstFrameUpdate', this.fb);
             }

@@ -48,6 +48,9 @@ class VncClient extends Events {
 
         this._socketBuffer = new SocketBuffer();
 
+        this.consts = {};
+        this.consts.encodings = encodings;
+
         this.resetState();
         this.debug = options.debug || false;
         this._fps = Number(options.fps) || 4;

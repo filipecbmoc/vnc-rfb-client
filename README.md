@@ -155,7 +155,7 @@ client.changeFps(1);
 client.connect({host: '127.0.0.1', port: 5900, password: 'password'});
 
 client.on('frameUpdated', (data) => {
-    new Jimp(data, (err, image) => {
+    new Jimp({width: client.clientWidth, height: client.height, data}, (err, image) => {
         if (err) {
             console.log(err);
         }

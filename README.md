@@ -146,29 +146,32 @@ client.on('rectProcessed', (rect) => {
 
 ```javascript
 const VncClient = require('vnc-rfb-client');
-const jimp = require('jimp');
+const Jimp = require('jimp');
 
 const client = new VncClient();
 
 // Just 1 update per second
 client.changeFps(1);
-client.connect({host: '127.0.0.1', port: 5900, password: 'password'});
+client.connect({host: '127.0.0.1', port: 5900, password: 'abc123'});
 
 client.on('frameUpdated', (data) => {
-    new Jimp({width: client.clientWidth, height: client.height, data}, (err, image) => {
-        if (err) {
-            console.log(err);
-        }
-        const fileName = `${Date.now()}.jpg`;
-        console.log(`Saving frame to file. ${fileName}`);
-        image.write(`./${fileName}`);
-    });
+   new Jimp({width: client.clientWidth, height: client.clientHeight, data}, (err, image) => {
+      if (err) {
+         console.log(err);
+      }
+      const fileName = `${Date.now()}.jpg`;
+      console.log(`Saving frame to file. ${fileName}`);
+      image.write(`${fileName}`);
+   });
 });
 
-client.on('frameUpdated', (fb) => {
-    console.log('Framebuffer updated.');
+client.on('connectError', (err) => {
+   console.log(err);
 });
 
+client.on('authError', () => {
+   console.log('Authentication failed.');
+});
 ```
 
 ### Record session with FFMPEG

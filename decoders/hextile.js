@@ -31,7 +31,7 @@ class Hextile {
 
             while (tiles) {
 
-                await socket.waitBytes(1);
+                await socket.waitBytes(1, 'Hextile subencoding');
                 const subEncoding = socket.readUInt8();
                 dataSize++;
                 const currTile = totalTiles - tiles;

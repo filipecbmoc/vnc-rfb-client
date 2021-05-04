@@ -70,7 +70,8 @@ const initOptions = {
         VncClient.consts.encodings.hextile,
         VncClient.consts.encodings.raw,
         VncClient.consts.encodings.pseudoDesktopSize,
-    ]
+    ],
+   debugLevel: 1 // Verbosity level (1 - 5) when debug is set to true
 };
 const client = new VncClient(initOptions);
 

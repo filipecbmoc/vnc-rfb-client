@@ -48,13 +48,14 @@ class VncClient extends Events {
         return this._connection ? this._connection.localPort : 0;
     }
 
-    constructor(options = {debug: false, fps: 0, encodings: []}) {
+    constructor(options = {debug: false, fps: 0, encodings: [], debugLevel: 1}) {
         super();
 
         this._socketBuffer = new SocketBuffer();
 
         this.resetState();
         this.debug = options.debug || false;
+        this.debugLevel = options.debugLevel || 1;
         this._fps = Number(options.fps) || 0;
         // Calculate interval to meet configured FPS
         this._timerInterval = this._fps > 0 ? 1000 / this._fps : 0;
@@ -162,12 +163,17 @@ class VncClient extends Events {
 
         this._connection.on('data', async (data) => {
 
+            this._log(data.toString(), true, 5);
             this._socketBuffer.pushData(data);
+
+            if (this._processingFrame) {
+                return;
+            }
 
             if (!this._handshaked) {
                 this._handleHandshake();
             } else if (this._expectingChallenge) {
-                this._handleAuthChallenge();
+                await this._handleAuthChallenge();
             } else if (this._waitingServerInit) {
                 await this._handleServerInit();
             } else {
@@ -199,7 +205,9 @@ class VncClient extends Events {
      * @param height - Height of the update area desired, usually client height
      */
     requestFrameUpdate(full = false, incremental = 1, x = 0, y = 0, width = this.clientWidth, height = this.clientHeight) {
-        if ((this._frameBufferReady || full) && this._connection && !this._rects) {
+        if ((this._frameBufferReady || full) && this._connection && !this._rects && this._encodingsSent) {
+
+            this._log('Requesting frame update.', true, 3);
 
             // Request data
             const message = new Buffer(10);
@@ -210,7 +218,7 @@ class VncClient extends Events {
             message.writeUInt16BE(width, 6); // Width
             message.writeUInt16BE(height, 8); // Height
 
-            this._connection.write(message);
+            this.sendData(message);
 
             this._frameBufferReady = true;
 
@@ -223,17 +231,19 @@ class VncClient extends Events {
      */
     _handleHandshake() {
         // Handshake, negotiating protocol version
+        this._log('Received: ' + this._socketBuffer.toString(), true, 2);
+        this._log(this._socketBuffer.buffer, true, 3);
         if (this._socketBuffer.toString() === versionString.V3_003) {
             this._log('Sending 3.3', true);
-            this._connection.write(versionString.V3_003);
+            this.sendData(versionString.V3_003);
             this._version = '3.3';
         } else if (this._socketBuffer.toString() === versionString.V3_007) {
             this._log('Sending 3.7', true);
-            this._connection.write(versionString.V3_007);
+            this.sendData(versionString.V3_007);
             this._version = '3.7';
         } else if (this._socketBuffer.toString() === versionString.V3_008) {
             this._log('Sending 3.8', true);
-            this._connection.write(versionString.V3_008);
+            this.sendData(versionString.V3_008);
             this._version = '3.8';
         } else {
             // Negotiating auth mechanism
@@ -241,10 +251,10 @@ class VncClient extends Events {
             if (this._socketBuffer.includes(0x02) && this._password) {
                 this._log('Password provided and server support VNC auth. Choosing VNC auth.', true);
                 this._expectingChallenge = true;
-                this._connection.write(new Buffer([0x02]));
+                this.sendData(new Buffer.from([0x02]));
             } else if (this._socketBuffer.includes(1)) {
                 this._log('Password not provided or server does not support VNC auth. Trying none.', true);
-                this._connection.write(new Buffer([0x01]));
+                this.sendData(new Buffer.from([0x01]));
                 if (this._version === '3.7') {
                     this._waitingServerInit = true;
                 } else {
@@ -257,32 +267,47 @@ class VncClient extends Events {
             }
         }
 
-        this._socketBuffer?.flush(false);
+    }
 
+    /**
+     * Send data to the server
+     * @param data
+     * @param flush - If true, flush the local buffer before sending
+     */
+    sendData(data, flush = true) {
+        if (flush) {
+            this._socketBuffer.flush(false);
+        }
+        this._connection.write(data);
     }
 
     /**
      * Handle VNC auth challenge
      * @private
      */
-    _handleAuthChallenge() {
+    async _handleAuthChallenge() {
 
         if (this._challengeResponseSent) {
             // Challenge response already sent. Checking result.
 
-            if (this._socketBuffer.buffer[3] === 0) {
+            if (this._socketBuffer.readUInt32BE() === 0) {
                 // Auth success
+                this._log('Authenticated successfully', true);
                 this._authenticated = true;
                 this.emit('authenticated');
                 this._expectingChallenge = false;
                 this._sendClientInit();
             } else {
                 // Auth fail
+                this._log('Authentication failed', true);
                 this.emit('authError');
                 this.resetState();
             }
 
         } else {
+
+            this._log('Challenge received.', true);
+            await this._socketBuffer.waitBytes(16, 'Auth challenge');
 
             const key = new Buffer(8);
             key.fill(0);
@@ -298,12 +323,12 @@ class VncClient extends Events {
             response.fill(des1.update(this._socketBuffer.buffer.slice(0, 8)), 0, 8);
             response.fill(des2.update(this._socketBuffer.buffer.slice(8, 16)), 8, 16);
 
-            this._connection.write(response);
+            this._log('Sending response: ' + response.toString(), true);
+
+            this.sendData(response);
             this._challengeResponseSent = true;
 
         }
-
-        this._socketBuffer.flush(false);
 
     }
 
@@ -335,7 +360,7 @@ class VncClient extends Events {
 
         this._waitingServerInit = false;
 
-        await this._socketBuffer.waitBytes(18);
+        await this._socketBuffer.waitBytes(18, 'Server init');
 
         this.clientWidth = this._socketBuffer.readUInt16BE();
         this.clientHeight = this._socketBuffer.readUInt16BE();
@@ -349,15 +374,15 @@ class VncClient extends Events {
         this.pixelFormat.redShift = this._socketBuffer.readInt8();
         this.pixelFormat.greenShift = this._socketBuffer.readInt8();
         this.pixelFormat.blueShift = this._socketBuffer.readInt8();
+        // Padding
+        this._socketBuffer.offset += 3;
         this.updateFbSize();
-        this.clientName = this._socketBuffer.buffer.slice(24).toString();
-
-        this._socketBuffer.flush(false);
+        const nameSize = this._socketBuffer.readUInt32BE();
+        this.clientName = this._socketBuffer.readNBytesOffset(nameSize).toString();
 
         this._log(`Screen size: ${this.clientWidth}x${this.clientHeight}`);
         this._log(`Client name: ${this.clientName}`);
         this._log(`pixelFormat: ${JSON.stringify(this.pixelFormat)}`);
-
 
         if (this._set8BitColor) {
             this._log(`8 bit color format requested, only raw encoding is supported.`);
@@ -376,6 +401,7 @@ class VncClient extends Events {
      * Update the frame buffer size according to client width and height (RGBA)
      */
     updateFbSize() {
+        this._log(`Updating the frame buffer size.`, true);
         this.fb = new Buffer(this.clientWidth * this.clientHeight * 4);
     }
 
@@ -408,7 +434,7 @@ class VncClient extends Events {
         message.writeUInt8(0, 19); // PixelFormat - Padding
 
         // Envia um setPixelFormat trocando para mapa de cores
-        this._connection.write(message);
+        this.sendData(message);
 
         this.pixelFormat.bitsPerPixel = 8;
         this.pixelFormat.depth = 8;
@@ -422,6 +448,7 @@ class VncClient extends Events {
     _sendEncodings() {
 
         this._log('Sending encodings.');
+        this._encodingsSent = true;
         // If this._set8BitColor is set, only copyrect and raw encodings are supported
         const message = new Buffer(4 + ((!this._set8BitColor ? this.encodings.length : 2) * 4));
         message.writeUInt8(2); // Message type
@@ -436,11 +463,12 @@ class VncClient extends Events {
                 offset += 4;
             }
         } else {
+            // Only those encodings are supported with 8bits color
             message.writeInt32BE(encodings.copyRect, offset);
             message.writeInt32BE(encodings.raw, offset + 4);
         }
 
-        this._connection.write(message);
+        this.sendData(message);
 
     }
 
@@ -452,7 +480,7 @@ class VncClient extends Events {
         this._log(`Sending clientInit`);
         this._waitingServerInit = true;
         // Shared bit set
-        this._connection.write('1');
+        this.sendData(new Buffer.from([1]));
     }
 
     /**
@@ -492,9 +520,9 @@ class VncClient extends Events {
      */
     async _handleCutText() {
         this._socketBuffer.setOffset(4);
-        await this._socketBuffer.waitBytes(1);
+        await this._socketBuffer.waitBytes(1, 'Cut text size');
         const length = this._socketBuffer.readUInt32BE();
-        await this._socketBuffer.waitBytes(length);
+        await this._socketBuffer.waitBytes(length, 'Cut text data');
         this.emit('cutText', this._socketBuffer.readNBytesOffset(length).toString());
         this._socketBuffer.flush();
     }
@@ -509,13 +537,15 @@ class VncClient extends Events {
 
         while (this._rects) {
 
-            await this._socketBuffer.waitBytes(12);
+            await this._socketBuffer.waitBytes(12, 'Rect begin');
             const rect = {};
             rect.x = this._socketBuffer.readUInt16BE();
             rect.y = this._socketBuffer.readUInt16BE();
             rect.width = this._socketBuffer.readUInt16BE();
             rect.height = this._socketBuffer.readUInt16BE();
             rect.encoding = this._socketBuffer.readInt32BE();
+
+            this._log(`Rect data. X: ${rect.x}  Y: ${rect.y}  W: ${rect.width}  H: ${rect.height}  Encoding: ${rect.encoding}`, true, 2);
 
             if (rect.encoding === encodings.pseudoCursor) {
                 const dataSize = rect.width * rect.height * (this.pixelFormat.bitsPerPixel / 8);
@@ -540,10 +570,10 @@ class VncClient extends Events {
             }
             this._rects--;
             this.emit('rectProcessed', rect);
-
-            if (!this._rects) {
-                this._socketBuffer.flush(true);
-            }
+            //
+            // if (!this._rects) {
+            //     this._socketBuffer.flush(true);
+            // }
 
         }
 
@@ -554,7 +584,6 @@ class VncClient extends Events {
             }
             this._log('Frame buffer updated.', true);
             this.emit('frameUpdated', this.fb);
-
         }
 
         this._processingFrame = false;
@@ -588,7 +617,7 @@ class VncClient extends Events {
 
         this._log(`ColorMap received. Colors: ${numColors}.`);
 
-        await this._socketBuffer.waitBytes(numColors * 6);
+        await this._socketBuffer.waitBytes(numColors * 6, 'Colormap data');
 
         for (let x = 0; x < numColors; x++) {
             this._colorMap[firstColor] = {
@@ -635,6 +664,8 @@ class VncClient extends Events {
         this._frameBufferReady = false;
         this._firstFrameReceived = false;
         this._processingFrame = false;
+
+        this._encodingsSent = false;
 
         this.clientWidth = 0;
         this.clientHeight = 0;
@@ -686,7 +717,7 @@ class VncClient extends Events {
 
         message.writeUInt32BE(key, 4); // Key code
 
-        this._connection.write(message);
+        this.sendData(message, false);
 
     }
 
@@ -724,7 +755,7 @@ class VncClient extends Events {
         message.writeUInt16BE(xPosition, 2); // X Position
         message.writeUInt16BE(yPosition, 4); // Y Position
 
-        this._connection.write(message);
+        this.sendData(message, false);
 
     }
 
@@ -743,7 +774,7 @@ class VncClient extends Events {
         message.writeUInt32BE(textBuffer.length, 4); // Padding
         textBuffer.copy(message, 8);
 
-        this._connection.write(message);
+        this.sendData(message, false);
 
     }
 
@@ -751,10 +782,11 @@ class VncClient extends Events {
      * Print log info
      * @param text
      * @param debug
+     * @param level
      * @private
      */
-    _log(text, debug = false) {
-        if (!debug || (debug && this.debug)) {
+    _log(text, debug = false, level = 1) {
+        if (!debug || (debug && this.debug && level <= this.debugLevel)) {
             console.log(text);
         }
     }

@@ -11,7 +11,7 @@ class Raw {
     decode(rect, fb, bitsPerPixel, colorMap, screenW, screenH, socket, depth) {
         return new Promise(async (resolve, reject) => {
 
-            await socket.waitBytes(rect.width * rect.height * (bitsPerPixel / 8));
+            await socket.waitBytes(rect.width * rect.height * (bitsPerPixel / 8), 'Raw pixel data');
             rect.data = socket.readNBytesOffset(rect.width * rect.height * (bitsPerPixel / 8));
 
             for (let h = 0; h < rect.height; h++) {

@@ -5,7 +5,7 @@ class Zrle {
 
     constructor() {
 
-        this.zlib = zlib.createInflate({chunkSize: 16 * 1024 * 1024, flush: zlib.constants.Z_FULL_FLUSH});
+        this.zlib = zlib.createInflate();
         this.unBuffer = new SocketBuffer();
 
         this.zlib.on('data', async (chunk) => {
@@ -22,20 +22,21 @@ class Zrle {
 
         return new Promise(async (resolve, reject) => {
 
-            await socket.waitBytes(4);
+            await socket.waitBytes(4, 'ZLIB Size');
 
             const initialOffset = socket.offset;
             const dataSize = socket.readUInt32BE();
 
-            await socket.waitBytes(dataSize);
+            await socket.waitBytes(dataSize, 'ZLIB Data');
 
             const compressedData = socket.readNBytesOffset(dataSize);
 
             rect.data = socket.readNBytes(dataSize + 4, initialOffset);
 
-            this.unBuffer.flush();
+            this.unBuffer.flush(false);
+
             this.zlib.write(compressedData, async () => {
-                this.zlib.flush();
+                // this.zlib.flush();
 
                 let tiles;
                 let totalTiles;
@@ -60,11 +61,12 @@ class Zrle {
                     const tw = Math.min(64, (rect.x + rect.width) - tx);
                     const th = Math.min(64, (rect.y + rect.height) - ty);
 
-                    const now = process.hrtime.bigint();
                     let totalRun = 0;
                     let runs = 0;
 
-                    if (subEncoding === 127 || subEncoding === 129) {
+                    if (subEncoding === 129) {
+                        console.log('Invalid subencoding. ' + subEncoding);
+                    } else if (subEncoding >= 17 && subEncoding <= 127) {
                         console.log('Invalid subencoding. ' + subEncoding);
                     } else if (subEncoding === 0) {
                         // Raw
@@ -281,7 +283,7 @@ class Zrle {
 
                         for (let x = 0; x < paletteSize; x++) {
                             let color;
-                            if (bitsPerPixel === 24 || (bitsPerPixel === 32 && depth === 24)) {
+                            if (bitsPerPixel === 24 || (bitsPerPixel === 32 && depth === 24) || true) {
                                 await this.unBuffer.waitBytes(3, 'paletterle 24bits');
                                 color = {
                                     r: this.unBuffer.readUInt8(),

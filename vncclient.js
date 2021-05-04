@@ -256,7 +256,7 @@ class VncClient extends Events {
                 this._log('Password not provided or server does not support VNC auth. Trying none.', true);
                 this.sendData(new Buffer.from([0x01]));
                 if (this._version === '3.7') {
-                    this._waitingServerInit = true;
+                    this._sendClientInit();
                 } else {
                     this._expectingChallenge = true;
                     this._challengeResponseSent = true;
@@ -323,7 +323,7 @@ class VncClient extends Events {
             response.fill(des1.update(this._socketBuffer.buffer.slice(0, 8)), 0, 8);
             response.fill(des2.update(this._socketBuffer.buffer.slice(8, 16)), 8, 16);
 
-            this._log('Sending response: ' + response.toString(), true);
+            this._log('Sending response: ' + response.toString(), true, 2);
 
             this.sendData(response);
             this._challengeResponseSent = true;
@@ -582,7 +582,7 @@ class VncClient extends Events {
                 this._firstFrameReceived = true;
                 this.emit('firstFrameUpdate', this.fb);
             }
-            this._log('Frame buffer updated.', true);
+            this._log('Frame buffer updated.', true, 2);
             this.emit('frameUpdated', this.fb);
         }
 

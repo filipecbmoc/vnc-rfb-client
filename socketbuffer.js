@@ -80,6 +80,37 @@ class SocketBuffer {
         return this.buffer.slice(offset, offset + bytes);
     }
 
+    readRgbPlusAlpha(red, green, blue) {
+        const colorBuf = this.buffer.slice(this.offset, this.offset + 3);
+        this.offset += 3;
+        return red === 0 && green === 1 && blue === 2 ? Buffer.concat([colorBuf, new Buffer.from([255])]).readIntBE(0, 4) :
+            Buffer.concat([colorBuf.slice(red, red + 1), colorBuf.slice(green, green + 1), colorBuf.slice(blue, blue + 1), new Buffer.from([255])]).readIntBE(0, 4);
+    }
+
+    readRgbColorMap(red, green, blue, redMax, greenMax, blueMax) {
+        const colorBuf = this.buffer.slice(this.offset, this.offset + 6);
+        this.offset += 6;
+        const redBytes = colorBuf.slice(red * 2, (red * 2) + 2);
+        const greenBytes = colorBuf.slice(green * 2, (green * 2) + 2);
+        const blueBytes = colorBuf.slice(blue * 2, (blue * 2) + 2);
+        const redColor = Math.floor((redBytes.readUInt16BE() / redMax) * 255);
+        const greenColor = Math.floor((greenBytes.readUInt16BE() / greenMax) * 255);
+        const blueColor = Math.floor((blueBytes.readUInt16BE() / blueMax) * 255);
+        return Buffer.concat([new Buffer.from(redColor), new Buffer.from(greenColor), new Buffer.from(blueColor), new Buffer.from([255])]).readIntBE(0, 4);
+    }
+
+    readRgba(red, green, blue) {
+        if (red === 0 && green === 1 && blue === 2) {
+            const data = this.buffer.readIntBE(this.offset, 4);
+            this.offset += 4;
+            return data;
+        } else {
+            const colorBuf = this.buffer.slice(this.offset, this.offset + 4);
+            this.offset += 4;
+            return Buffer.concat([colorBuf.slice(red, red + 1), colorBuf.slice(green, green + 1), colorBuf.slice(blue, blue + 1), colorBuf.slice(3, 4)]).readIntBE(0, 4);
+        }
+    }
+
     readNBytesOffset(bytes) {
         const data = this.buffer.slice(this.offset, this.offset + bytes);
         this.offset += bytes;

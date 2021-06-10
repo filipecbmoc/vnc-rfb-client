@@ -1,12 +1,12 @@
 {
   "name": "vnc-rfb-client",
-  "version": "0.1.5",
+  "version": "0.1.8",
   "dependencies": {},
   "main": "vncclient.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": ["vnc", "rfb", "zrle", "hextile", "copyrect", "rfc 6143"],
   "author": "Filipe Calaça Barbosa",
   "license": "MIT",
   "devDependencies": {},

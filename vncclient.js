@@ -48,7 +48,7 @@ class VncClient extends Events {
         return this._connection ? this._connection.localPort : 0;
     }
 
-    constructor(options = {debug: false, fps: 0, encodings: [], debugLevel: 1}) {
+    constructor(options = {debug: true, fps: 0, encodings: [], debugLevel: 1}) {
         super();
 
         this._socketBuffer = new SocketBuffer();
@@ -71,12 +71,12 @@ class VncClient extends Events {
 
         this._rects = 0;
         this._decoders = {};
-        this._decoders[encodings.raw] = new RawDecoder();
+        this._decoders[encodings.raw] = new RawDecoder(this.debug, this.debugLevel);
         // TODO: Implement tight encoding
         // this._decoders[encodings.tight] = new tightDecoder();
-        this._decoders[encodings.zrle] = new ZrleDecoder();
-        this._decoders[encodings.copyRect] = new CopyrectDecoder();
-        this._decoders[encodings.hextile] = new HextileDecoder();
+        this._decoders[encodings.zrle] = new ZrleDecoder(this.debug, this.debugLevel);
+        this._decoders[encodings.copyRect] = new CopyrectDecoder(this.debug, this.debugLevel);
+        this._decoders[encodings.hextile] = new HextileDecoder(this.debug, this.debugLevel);
 
         if (this._timerInterval) {
             this._fbTimer();
@@ -98,7 +98,7 @@ class VncClient extends Events {
     }
 
     /**
-     * Adjuste the configured FPS
+     * Adjust the configured FPS
      * @param fps {number} - Number of update requests send by second
      */
     changeFps(fps) {
@@ -205,8 +205,10 @@ class VncClient extends Events {
      * @param height - Height of the update area desired, usually client height
      */
     requestFrameUpdate(full = false, incremental = 1, x = 0, y = 0, width = this.clientWidth, height = this.clientHeight) {
-        if ((this._frameBufferReady || full) && this._connection && !this._rects && this._encodingsSent) {
+        if ((this._frameBufferReady || full) && this._connection && !this._rects && this._encodingsSent && !this._requestSent) {
 
+            console.log('Requesting Frame Update');
+            this._requestSent = true;
             this._log('Requesting frame update.', true, 3);
 
             // Request data
@@ -360,7 +362,7 @@ class VncClient extends Events {
 
         this._waitingServerInit = false;
 
-        await this._socketBuffer.waitBytes(18, 'Server init');
+        await this._socketBuffer.waitBytes(24, 'Server init');
 
         this.clientWidth = this._socketBuffer.readUInt16BE();
         this.clientHeight = this._socketBuffer.readUInt16BE();
@@ -371,13 +373,14 @@ class VncClient extends Events {
         this.pixelFormat.redMax = this.bigEndianFlag ? this._socketBuffer.readUInt16BE() : this._socketBuffer.readUInt16LE();
         this.pixelFormat.greenMax = this.bigEndianFlag ? this._socketBuffer.readUInt16BE() : this._socketBuffer.readUInt16LE();
         this.pixelFormat.blueMax = this.bigEndianFlag ? this._socketBuffer.readUInt16BE() : this._socketBuffer.readUInt16LE();
-        this.pixelFormat.redShift = this._socketBuffer.readInt8();
-        this.pixelFormat.greenShift = this._socketBuffer.readInt8();
-        this.pixelFormat.blueShift = this._socketBuffer.readInt8();
+        this.pixelFormat.redShift = this._socketBuffer.readInt8() / 8;
+        this.pixelFormat.greenShift = this._socketBuffer.readInt8() / 8;
+        this.pixelFormat.blueShift = this._socketBuffer.readInt8() / 8;
         // Padding
         this._socketBuffer.offset += 3;
         this.updateFbSize();
         const nameSize = this._socketBuffer.readUInt32BE();
+        await this._socketBuffer.waitBytes(nameSize, 'Name Size');
         this.clientName = this._socketBuffer.readNBytesOffset(nameSize).toString();
 
         this._log(`Screen size: ${this.clientWidth}x${this.clientHeight}`);
@@ -433,7 +436,7 @@ class VncClient extends Events {
         message.writeUInt8(0, 18); // PixelFormat - Padding
         message.writeUInt8(0, 19); // PixelFormat - Padding
 
-        // Envia um setPixelFormat trocando para mapa de cores
+        // Send a request to change pixelFormat to colorMap
         this.sendData(message);
 
         this.pixelFormat.bitsPerPixel = 8;
@@ -532,8 +535,8 @@ class VncClient extends Events {
      */
     async _handleRect() {
 
-        this._processingFrame = true;
         const sendFbUpdate = this._rects;
+        this._processingFrame = true;
 
         while (this._rects) {
 
@@ -564,7 +567,7 @@ class VncClient extends Events {
                 this.updateFbSize();
                 this.emit('desktopSizeChanged', {width: this.clientWidth, height: this.clientHeight});
             } else if (this._decoders[rect.encoding]) {
-                await this._decoders[rect.encoding].decode(rect, this.fb, this.pixelFormat.bitsPerPixel, this._colorMap, this.clientWidth, this.clientHeight, this._socketBuffer, this.pixelFormat.depth);
+                await this._decoders[rect.encoding].decode(rect, this.fb, this.pixelFormat.bitsPerPixel, this._colorMap, this.clientWidth, this.clientHeight, this._socketBuffer, this.pixelFormat.depth, this.pixelFormat.redShift, this.pixelFormat.greenShift, this.pixelFormat.blueShift);
             } else {
                 this._log('Non supported update received. Encoding: ' + rect.encoding);
             }
@@ -601,6 +604,7 @@ class VncClient extends Events {
         this._rects = this._socketBuffer.readUInt16BE();
         this._log('Frame update received. Rects: ' + this._rects, true);
         await this._handleRect();
+        this._requestSent = false;
 
     }
 
@@ -620,11 +624,7 @@ class VncClient extends Events {
         await this._socketBuffer.waitBytes(numColors * 6, 'Colormap data');
 
         for (let x = 0; x < numColors; x++) {
-            this._colorMap[firstColor] = {
-                r: Math.floor((this._socketBuffer.readUInt16BE() / 65535) * 255),
-                g: Math.floor((this._socketBuffer.readUInt16BE() / 65535) * 255),
-                b: Math.floor((this._socketBuffer.readUInt16BE() / 65535) * 255)
-            };
+            this._colorMap[firstColor] = this._socketBuffer.readRgbColorMap(this.pixelFormat.redShift, this.pixelFormat.greenShift, this.pixelFormat.blueShift, this.pixelFormat.redMax, this.pixelFormat.greenMax, this.pixelFormat.blueMax);
             firstColor++;
         }
 
@@ -664,6 +664,8 @@ class VncClient extends Events {
         this._frameBufferReady = false;
         this._firstFrameReceived = false;
         this._processingFrame = false;
+
+        this._requestSent = false;
 
         this._encodingsSent = false;
 
@@ -740,14 +742,14 @@ class VncClient extends Events {
 
         let buttonMask = 0;
 
-        buttonMask += button1 ? 128 : 0;
-        buttonMask += button2 ? 64 : 0;
-        buttonMask += button3 ? 32 : 0;
-        buttonMask += button4 ? 16 : 0;
-        buttonMask += button5 ? 8 : 0;
-        buttonMask += button6 ? 4 : 0;
-        buttonMask += button7 ? 2 : 0;
-        buttonMask += button8 ? 1 : 0;
+        buttonMask += button8 ? 128 : 0;
+        buttonMask += button7 ? 64 : 0;
+        buttonMask += button6 ? 32 : 0;
+        buttonMask += button5 ? 16 : 0;
+        buttonMask += button4 ? 8 : 0;
+        buttonMask += button3 ? 4 : 0;
+        buttonMask += button2 ? 2 : 0;
+        buttonMask += button1 ? 1 : 0;
 
         const message = new Buffer(6);
         message.writeUInt8(5); // Message type

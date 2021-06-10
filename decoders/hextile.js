@@ -1,14 +1,15 @@
 class Hextile {
 
-    constructor() {
-
+    constructor(debug = false, debugLevel = 1) {
+        this.debug = debug;
+        this.debugLevel = debugLevel;
     }
 
     getPixelBytePos(x, y, width, height) {
         return ((y * width) + x) * 4;
     }
 
-    decode(rect, fb, bitsPerPixel, colorMap, screenW, screenH, socket, depth) {
+    decode(rect, fb, bitsPerPixel, colorMap, screenW, screenH, socket, depth, redShift, greenShift, blueShift) {
         return new Promise(async (resolve, reject) => {
 
             const initialOffset = socket.offset;
@@ -21,8 +22,8 @@ class Hextile {
 
             let lastSubEncoding;
 
-            const backgroundColor = {r: 0, g: 0, b: 0, a: 255};
-            const foregroundColor = {r: 0, g: 0, b: 0, a: 255};
+            let backgroundColor = 0;
+            let foregroundColor = 0;
 
             tilesX = Math.ceil(rect.width / 16);
             tilesY = Math.ceil(rect.height / 16);
@@ -61,33 +62,12 @@ class Hextile {
                             if (bitsPerPixel === 8) {
                                 const index = socket.readUInt8();
                                 const color = colorMap[index];
-                                // RGB
-                                // fb.writeUInt8(color?.r || 255, fbBytePosOffset);
-                                // fb.writeUInt8(color?.g || 255, fbBytePosOffset + 1);
-                                // fb.writeUInt8(color?.b || 255, fbBytePosOffset + 2);
-
-                                // BGR
-                                fb.writeUInt8(color?.r || 255, fbBytePosOffset + 2);
-                                fb.writeUInt8(color?.g || 255, fbBytePosOffset + 1);
-                                fb.writeUInt8(color?.b || 255, fbBytePosOffset);
+                                fb.writeIntBE(color, fbBytePosOffset, 4);
                             } else if (bitsPerPixel === 24) {
-                                fb.writeUInt8(socket.readUInt8(), fbBytePosOffset);
-                                fb.writeUInt8(socket.readUInt8(), fbBytePosOffset + 1);
-                                fb.writeUInt8(socket.readUInt8(), fbBytePosOffset + 2);
+                                fb.writeIntBE(socket.readRgbPlusAlpha(redShift, greenShift, blueShift), fbBytePosOffset, 4);
                             } else if (bitsPerPixel === 32) {
-                                // RGB
-                                // fb.writeUInt8(rect.data.readUInt8(bytePosOffset), fbBytePosOffset);
-                                // fb.writeUInt8(rect.data.readUInt8(bytePosOffset + 1), fbBytePosOffset + 1);
-                                // fb.writeUInt8(rect.data.readUInt8(bytePosOffset + 2), fbBytePosOffset + 2);
-
-                                // BGR
-                                fb.writeUInt8(socket.readUInt8(), fbBytePosOffset + 2);
-                                fb.writeUInt8(socket.readUInt8(), fbBytePosOffset + 1);
-                                fb.writeUInt8(socket.readUInt8(), fbBytePosOffset);
-                                socket.readUInt8();
+                                fb.writeIntBE(socket.readRgba(redShift, greenShift, blueShift), fbBytePosOffset, 4);
                             }
-                            // Alpha, always 255
-                            fb.writeUInt8(255, fbBytePosOffset + 3);
                         }
                     }
                     lastSubEncoding = subEncoding;
@@ -99,26 +79,19 @@ class Hextile {
                                 await socket.waitBytes(1);
                                 const index = socket.readUInt8();
                                 dataSize++;
-                                backgroundColor.r = colorMap[index].r || 255;
-                                backgroundColor.g = colorMap[index].g || 255;
-                                backgroundColor.b = colorMap[index].b || 255;
+                                backgroundColor = colorMap[index];
                                 break;
 
                             case 24:
                                 await socket.waitBytes(3);
                                 dataSize += 3;
-                                backgroundColor.r = socket.readUInt8();
-                                backgroundColor.g = socket.readUInt8();
-                                backgroundColor.b = socket.readUInt8();
+                                backgroundColor = socket.readRgbPlusAlpha(redShift, greenShift, blueShift);
                                 break;
 
                             case 32:
                                 await socket.waitBytes(4);
                                 dataSize += 4;
-                                backgroundColor.r = socket.readUInt8();
-                                backgroundColor.g = socket.readUInt8();
-                                backgroundColor.b = socket.readUInt8();
-                                backgroundColor.a = socket.readUInt8();
+                                backgroundColor = socket.readRgba(redShift, greenShift, blueShift);
                                 break;
 
                         }
@@ -131,26 +104,19 @@ class Hextile {
                                 await socket.waitBytes(1);
                                 const index = socket.readUInt8();
                                 dataSize++;
-                                foregroundColor.r = colorMap[index].r || 255;
-                                foregroundColor.g = colorMap[index].g || 255;
-                                foregroundColor.b = colorMap[index].b || 255;
+                                foregroundColor = colorMap[index];
                                 break;
 
                             case 24:
                                 await socket.waitBytes(3);
                                 dataSize += 3;
-                                foregroundColor.r = socket.readUInt8();
-                                foregroundColor.g = socket.readUInt8();
-                                foregroundColor.b = socket.readUInt8();
+                                foregroundColor = socket.readRgbPlusAlpha(redShift, greenShift, blueShift);
                                 break;
 
                             case 32:
                                 await socket.waitBytes(4);
                                 dataSize += 4;
-                                foregroundColor.r = socket.readUInt8();
-                                foregroundColor.g = socket.readUInt8();
-                                foregroundColor.b = socket.readUInt8();
-                                foregroundColor.a = socket.readUInt8();
+                                foregroundColor = socket.readRgba(redShift, greenShift, blueShift);
                                 break;
 
                         }
@@ -170,7 +136,7 @@ class Hextile {
                             while (subRects) {
 
                                 subRects--;
-                                const color = {r: 0, g: 0, b: 0, a: 255};
+                                let color = 0;
 
                                 // SubrectsColoured
                                 if (subEncoding & 0x10) {
@@ -181,34 +147,24 @@ class Hextile {
                                             await socket.waitBytes(1);
                                             const index = socket.readUInt8();
                                             dataSize++;
-                                            color.r = colorMap[index].r || 255;
-                                            color.g = colorMap[index].g || 255;
-                                            color.b = colorMap[index].b || 255;
+                                            color = colorMap[index];
                                             break;
 
                                         case 24:
                                             await socket.waitBytes(3);
                                             dataSize += 3;
-                                            color.r = socket.readUInt8();
-                                            color.g = socket.readUInt8();
-                                            color.b = socket.readUInt8();
+                                            color = socket.readRgbPlusAlpha(redShift, greenShift, blueShift);
                                             break;
 
                                         case 32:
                                             await socket.waitBytes(4);
                                             dataSize += 4;
-                                            color.r = socket.readUInt8();
-                                            color.g = socket.readUInt8();
-                                            color.b = socket.readUInt8();
-                                            color.a = socket.readUInt8();
+                                            color = socket.readRgba(redShift, greenShift, blueShift);
                                             break;
                                     }
 
                                 } else {
-                                    color.r = foregroundColor.r;
-                                    color.g = foregroundColor.g;
-                                    color.b = foregroundColor.b;
-                                    color.a = foregroundColor.a;
+                                    color = foregroundColor;
                                 }
 
                                 await socket.waitBytes(2);
@@ -251,10 +207,7 @@ class Hextile {
         for (let h = 0; h < th; h++) {
             for (let w = 0; w < tw; w++) {
                 const fbBytePosOffset = this.getPixelBytePos(tx + w, ty + h, screenW, screenH);
-                fb.writeUInt8(color.r || 255, fbBytePosOffset + 2);
-                fb.writeUInt8(color.g || 255, fbBytePosOffset + 1);
-                fb.writeUInt8(color.b || 255, fbBytePosOffset);
-                fb.writeUInt8(255, fbBytePosOffset + 3);
+                fb.writeIntBE(color, fbBytePosOffset, 4);
             }
         }
     }

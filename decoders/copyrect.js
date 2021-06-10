@@ -1,14 +1,15 @@
 class CopyRect {
 
-    constructor() {
-
+    constructor(debug = false, debugLevel = 1) {
+        this.debug = debug;
+        this.debugLevel = debugLevel;
     }
 
     getPixelBytePos(x, y, width, height) {
         return ((y * width) + x) * 4;
     }
 
-    decode(rect, fb, bitsPerPixel, colorMap, screenW, screenH, socket, depth) {
+    decode(rect, fb, bitsPerPixel, colorMap, screenW, screenH, socket, depth, red, green, blue) {
         return new Promise(async (resolve, reject) => {
 
             await socket.waitBytes(4);

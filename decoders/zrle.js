@@ -3,8 +3,10 @@ const SocketBuffer = require('../socketbuffer');
 
 class Zrle {
 
-    constructor() {
+    constructor(debug = false, debugLevel = 1) {
 
+        this.debug = debug;
+        this.debugLevel = debugLevel;
         this.zlib = zlib.createInflate();
         this.unBuffer = new SocketBuffer();
 
@@ -18,7 +20,7 @@ class Zrle {
         return ((y * width) + x) * 4;
     }
 
-    decode(rect, fb, bitsPerPixel, colorMap, screenW, screenH, socket, depth) {
+    decode(rect, fb, bitsPerPixel, colorMap, screenW, screenH, socket, depth, red, green, blue) {
 
         return new Promise(async (resolve, reject) => {
 
@@ -34,6 +36,7 @@ class Zrle {
             rect.data = socket.readNBytes(dataSize + 4, initialOffset);
 
             this.unBuffer.flush(false);
+            // this._log(`Cleaning buffer. Bytes on buffer: ${this.unBuffer.buffer.length} - Offset: ${this.unBuffer.offset}`);
 
             this.zlib.write(compressedData, async () => {
                 // this.zlib.flush();
@@ -48,8 +51,13 @@ class Zrle {
                 tiles = tilesX * tilesY;
                 totalTiles = tiles;
 
+                let firstRle = false;
+
+                this._log(`Starting rect processing. ${rect.width}x${rect.height}. Compressed size: ${dataSize}. Decompressed size: ${this.unBuffer.bytesLeft()}`, true, 3);
+
                 while (tiles) {
 
+                    let initialOffset = this.unBuffer.offset;
                     await this.unBuffer.waitBytes(1, 'tile begin.');
                     const subEncoding = this.unBuffer.readUInt8();
                     const currTile = totalTiles - tiles;
@@ -64,6 +72,8 @@ class Zrle {
                     let totalRun = 0;
                     let runs = 0;
 
+                    let palette = [];
+
                     if (subEncoding === 129) {
                         console.log('Invalid subencoding. ' + subEncoding);
                     } else if (subEncoding >= 17 && subEncoding <= 127) {
@@ -77,55 +87,29 @@ class Zrle {
                                     await this.unBuffer.waitBytes(1, 'raw 8bits');
                                     const index = this.unBuffer.readUInt8();
                                     const color = colorMap[index];
-                                    // RGB
-                                    // fb.writeUInt8(color?.r || 255, fbBytePosOffset);
-                                    // fb.writeUInt8(color?.g || 255, fbBytePosOffset + 1);
-                                    // fb.writeUInt8(color?.b || 255, fbBytePosOffset + 2);
-
-                                    // BGR
-                                    fb.writeUInt8(color?.r || 255, fbBytePosOffset + 2);
-                                    fb.writeUInt8(color?.g || 255, fbBytePosOffset + 1);
-                                    fb.writeUInt8(color?.b || 255, fbBytePosOffset);
+                                    fb.writeIntBE(color, fbBytePosOffset, 4);
                                 } else if (bitsPerPixel === 24 || (bitsPerPixel === 32 && depth === 24)) {
                                     await this.unBuffer.waitBytes(3, 'raw 24bits');
-                                    fb.writeUInt8(this.unBuffer.readUInt8(), fbBytePosOffset + 2);
-                                    fb.writeUInt8(this.unBuffer.readUInt8(), fbBytePosOffset + 1);
-                                    fb.writeUInt8(this.unBuffer.readUInt8(), fbBytePosOffset);
+                                    fb.writeIntBE(this.unBuffer.readRgbPlusAlpha(red, green, blue), fbBytePosOffset, 4);
                                 } else if (bitsPerPixel === 32) {
-                                    // RGB
-                                    // fb.writeUInt8(rect.data.readUInt8(bytePosOffset), fbBytePosOffset);
-                                    // fb.writeUInt8(rect.data.readUInt8(bytePosOffset + 1), fbBytePosOffset + 1);
-                                    // fb.writeUInt8(rect.data.readUInt8(bytePosOffset + 2), fbBytePosOffset + 2);
-
-                                    // BGR
                                     await this.unBuffer.waitBytes(4, 'raw 32bits');
-                                    fb.writeUInt8(this.unBuffer.readUInt8(), fbBytePosOffset + 2);
-                                    fb.writeUInt8(this.unBuffer.readUInt8(), fbBytePosOffset + 1);
-                                    fb.writeUInt8(this.unBuffer.readUInt8(), fbBytePosOffset);
-                                    this.unBuffer.readUInt8();
+                                    fb.writeIntBE(this.unBuffer.readRgba(red, green, blue), fbBytePosOffset, 4);
                                 }
-                                // Alpha
-                                fb.writeUInt8(255, fbBytePosOffset + 3);
                             }
                         }
                     } else if (subEncoding === 1) {
                         // Single Color
-                        let color = {r: 0, g: 0, b: 0, a: 255};
+                        let color = 0;
                         if (bitsPerPixel === 8) {
                             await this.unBuffer.waitBytes(1, 'single color 8bits');
                             const index = this.unBuffer.readUInt8();
                             color = colorMap[index];
                         } else if (bitsPerPixel === 24 || (bitsPerPixel === 32 && depth === 24)) {
                             await this.unBuffer.waitBytes(3, 'single color 24bits');
-                            color.r = this.unBuffer.readUInt8();
-                            color.g = this.unBuffer.readUInt8();
-                            color.b = this.unBuffer.readUInt8();
+                            color = this.unBuffer.readRgbPlusAlpha(red, green, blue);
                         } else if (bitsPerPixel === 32) {
                             await this.unBuffer.waitBytes(4, 'single color 32bits');
-                            color.r = this.unBuffer.readUInt8();
-                            color.g = this.unBuffer.readUInt8();
-                            color.b = this.unBuffer.readUInt8();
-                            color.a = this.unBuffer.readUInt8();
+                            color = this.unBuffer.readRgba(red, green, blue);
                         }
                         this.applyColor(tw, th, tx, ty, screenW, screenH, color, fb);
 
@@ -136,20 +120,10 @@ class Zrle {
                             let color;
                             if (bitsPerPixel === 24 || (bitsPerPixel === 32 && depth === 24)) {
                                 await this.unBuffer.waitBytes(3, 'palette 24 bits');
-                                color = {
-                                    r: this.unBuffer.readUInt8(),
-                                    g: this.unBuffer.readUInt8(),
-                                    b: this.unBuffer.readUInt8(),
-                                    a: 255
-                                }
+                                color = this.unBuffer.readRgbPlusAlpha(red, green, blue);
                             } else if (bitsPerPixel === 32) {
                                 await this.unBuffer.waitBytes(3, 'palette 32 bits');
-                                color = {
-                                    r: this.unBuffer.readUInt8(),
-                                    g: this.unBuffer.readUInt8(),
-                                    b: this.unBuffer.readUInt8(),
-                                    a: this.unBuffer.readUInt8()
-                                }
+                                color = this.unBuffer.readRgba(red, green, blue);
                             }
                             palette.push(color);
                         }
@@ -172,21 +146,21 @@ class Zrle {
                                 switch (bitsPerIndex) {
                                     case 1:
                                         if (bitPos === 0) {
-                                            color = palette[(byte & 128) >> 7] || {r: 255, g: 255, b: 255, a: 255};
+                                            color = palette[(byte & 128) >> 7] || 0;
                                         } else if (bitPos === 1) {
-                                            color = palette[(byte & 64) >> 6] || {r: 255, g: 255, b: 255, a: 255};
+                                            color = palette[(byte & 64) >> 6] || 0;
                                         } else if (bitPos === 2) {
-                                            color = palette[(byte & 32) >> 5] || {r: 255, g: 255, b: 255, a: 255};
+                                            color = palette[(byte & 32) >> 5] || 0;
                                         } else if (bitPos === 3) {
-                                            color = palette[(byte & 16) >> 4] || {r: 255, g: 255, b: 255, a: 255};
+                                            color = palette[(byte & 16) >> 4] || 0;
                                         } else if (bitPos === 4) {
-                                            color = palette[(byte & 8) >> 3] || {r: 255, g: 255, b: 255, a: 255};
+                                            color = palette[(byte & 8) >> 3] || 0;
                                         } else if (bitPos === 5) {
-                                            color = palette[(byte & 4) >> 2] || {r: 255, g: 255, b: 255, a: 255};
+                                            color = palette[(byte & 4) >> 2] || 0;
                                         } else if (bitPos === 6) {
-                                            color = palette[(byte & 2) >> 1] || {r: 255, g: 255, b: 255, a: 255};
+                                            color = palette[(byte & 2) >> 1] || 0;
                                         } else if (bitPos === 7) {
-                                            color = palette[(byte & 1)] || {r: 255, g: 255, b: 255, a: 255};
+                                            color = palette[(byte & 1)] || 0;
                                         }
                                         bitPos++;
                                         if (bitPos === 8) {
@@ -196,13 +170,13 @@ class Zrle {
 
                                     case 2:
                                         if (bitPos === 0) {
-                                            color = palette[(byte & 196) >> 6] || {r: 255, g: 255, b: 255, a: 255};
+                                            color = palette[(byte & 196) >> 6] || 0;
                                         } else if (bitPos === 1) {
-                                            color = palette[(byte & 48) >> 4] || {r: 255, g: 255, b: 255, a: 255};
+                                            color = palette[(byte & 48) >> 4] || 0;
                                         } else if (bitPos === 2) {
-                                            color = palette[(byte & 12) >> 2] || {r: 255, g: 255, b: 255, a: 255};
+                                            color = palette[(byte & 12) >> 2] || 0;
                                         } else if (bitPos === 3) {
-                                            color = palette[(byte & 3)] || {r: 255, g: 255, b: 255, a: 255};
+                                            color = palette[(byte & 3)] || 0;
                                         }
                                         bitPos++;
                                         if (bitPos === 4) {
@@ -212,9 +186,9 @@ class Zrle {
 
                                     case 4:
                                         if (bitPos === 0) {
-                                            color = palette[(byte & 240) >> 4] || {r: 255, g: 255, b: 255, a: 255};
+                                            color = palette[(byte & 240) >> 4] || 0;
                                         } else if (bitPos === 1) {
-                                            color = palette[(byte & 15)] || {r: 255, g: 255, b: 255, a: 255};
+                                            color = palette[(byte & 15)] || 0;
                                         }
                                         bitPos++;
                                         if (bitPos === 2) {
@@ -223,38 +197,24 @@ class Zrle {
                                         break;
                                 }
                                 const fbBytePosOffset = this.getPixelBytePos(tx + w, ty + h, screenW, screenH);
-                                fb.writeUInt8(color.b ?? 0, fbBytePosOffset);
-                                fb.writeUInt8(color.g ?? 0, fbBytePosOffset + 1);
-                                fb.writeUInt8(color.r ?? 0, fbBytePosOffset + 2);
-                                fb.writeUInt8(color.a ?? 255, fbBytePosOffset + 3);
-
+                                fb.writeIntBE(color, fbBytePosOffset, 4);
                             }
                         }
 
                     } else if (subEncoding === 128) {
                         // Plain RLE
                         let runLength = 0;
-                        let color = {r: 0, g: 0, b: 0, a: 0};
+                        let color = 0;
 
                         for (let h = 0; h < th; h++) {
                             for (let w = 0; w < tw; w++) {
                                 if (!runLength) {
                                     if (bitsPerPixel === 24 || (bitsPerPixel === 32 && depth === 24)) {
                                         await this.unBuffer.waitBytes(3, 'rle 24bits');
-                                        color = {
-                                            r: this.unBuffer.readUInt8(),
-                                            g: this.unBuffer.readUInt8(),
-                                            b: this.unBuffer.readUInt8(),
-                                            a: 255
-                                        }
+                                        color = this.unBuffer.readRgbPlusAlpha(red, green, blue);
                                     } else if (bitsPerPixel === 32) {
                                         await this.unBuffer.waitBytes(4, 'rle 32bits');
-                                        color = {
-                                            r: this.unBuffer.readUInt8(),
-                                            g: this.unBuffer.readUInt8(),
-                                            b: this.unBuffer.readUInt8(),
-                                            a: this.unBuffer.readUInt8()
-                                        }
+                                        color = this.unBuffer.readRgba(red, green, blue);
                                     }
                                     await this.unBuffer.waitBytes(1, 'rle runsize');
                                     let runSize = this.unBuffer.readUInt8();
@@ -268,10 +228,7 @@ class Zrle {
                                     runs++;
                                 }
                                 const fbBytePosOffset = this.getPixelBytePos(tx + w, ty + h, screenW, screenH);
-                                fb.writeUInt8(color.b ?? 0, fbBytePosOffset);
-                                fb.writeUInt8(color.g ?? 0, fbBytePosOffset + 1);
-                                fb.writeUInt8(color.r ?? 0, fbBytePosOffset + 2);
-                                fb.writeUInt8(color.a ?? 255, fbBytePosOffset + 3);
+                                fb.writeIntBE(color, fbBytePosOffset, 4);
                                 runLength--;
                             }
                         }
@@ -279,32 +236,25 @@ class Zrle {
                     } else if (subEncoding >= 130) {
                         // Palette RLE
                         const paletteSize = subEncoding - 128;
-                        const palette = [];
+                        // const palette = [];
 
                         for (let x = 0; x < paletteSize; x++) {
                             let color;
-                            if (bitsPerPixel === 24 || (bitsPerPixel === 32 && depth === 24) || true) {
+                            if (bitsPerPixel === 24 || (bitsPerPixel === 32 && depth === 24)) {
                                 await this.unBuffer.waitBytes(3, 'paletterle 24bits');
-                                color = {
-                                    r: this.unBuffer.readUInt8(),
-                                    g: this.unBuffer.readUInt8(),
-                                    b: this.unBuffer.readUInt8(),
-                                    a: 255
-                                }
+                                color = this.unBuffer.readRgbPlusAlpha(red, green, blue);
                             } else if (bitsPerPixel === 32) {
                                 await this.unBuffer.waitBytes(4, 'paletterle 32bits');
-                                color = {
-                                    r: this.unBuffer.readUInt8(),
-                                    g: this.unBuffer.readUInt8(),
-                                    b: this.unBuffer.readUInt8(),
-                                    a: this.unBuffer.readUInt8()
-                                }
+                                color = this.unBuffer.readRgba(red, green, blue);
                             }
+
+                            if (firstRle) console.log('Cor da paleta: ' + JSON.stringify(color));
+
                             palette.push(color);
                         }
 
                         let runLength = 0;
-                        let color = {r: 0, g: 0, b: 0, a: 255};
+                        let color = 0;
 
                         for (let h = 0; h < th; h++) {
                             for (let w = 0; w < tw; w++) {
@@ -313,11 +263,11 @@ class Zrle {
                                     const colorIndex = this.unBuffer.readUInt8();
 
                                     if (!(colorIndex & 128)) {
-                                        // Run de tamanho 1
-                                        color = palette[colorIndex] ?? {r: 0, g: 0, b: 0, a: 255};
+                                        // Run size of 1
+                                        color = palette[colorIndex] ?? 0;
                                         runLength = 1;
                                     } else {
-                                        color = palette[colorIndex - 128] ?? {r: 0, g: 0, b: 0, a: 255};
+                                        color = palette[colorIndex - 128] ?? 0;
                                         await this.unBuffer.waitBytes(1, 'paletterle runlength');
                                         let runSize = this.unBuffer.readUInt8();
                                         while (runSize === 255) {
@@ -332,17 +282,18 @@ class Zrle {
 
                                 }
                                 const fbBytePosOffset = this.getPixelBytePos(tx + w, ty + h, screenW, screenH);
-                                fb.writeUInt8(color.b ?? 0, fbBytePosOffset);
-                                fb.writeUInt8(color.g ?? 0, fbBytePosOffset + 1);
-                                fb.writeUInt8(color.r ?? 0, fbBytePosOffset + 2);
-                                fb.writeUInt8(color.a ?? 255, fbBytePosOffset + 3);
+                                fb.writeIntBE(color, fbBytePosOffset, 4);
                                 runLength--;
                             }
                         }
 
+                        firstRle = false;
+
                     }
                     // 127 and 129 are not valid
                     // 17 to 126 are not used
+
+                    this._log(`Processing tile ${totalTiles - tiles}/${totalTiles} - SubEnc: ${subEncoding} - Size: ${tw}x${th} - BytesUsed: ${this.unBuffer.offset - initialOffset} - TotalRun: ${totalRun} - Runs: ${runs} - PaletteSize: ${palette.length}`, true, 3);
 
                     tiles--;
 
@@ -362,11 +313,21 @@ class Zrle {
         for (let h = 0; h < th; h++) {
             for (let w = 0; w < tw; w++) {
                 const fbBytePosOffset = this.getPixelBytePos(tx + w, ty + h, screenW, screenH);
-                fb.writeUInt8(color.b || 255, fbBytePosOffset);
-                fb.writeUInt8(color.g || 255, fbBytePosOffset + 1);
-                fb.writeUInt8(color.r || 255, fbBytePosOffset + 2);
-                fb.writeUInt8(255, fbBytePosOffset + 3);
+                fb.writeIntBE(color, fbBytePosOffset, 4);
             }
+        }
+    }
+
+    /**
+     * Print log info
+     * @param text
+     * @param debug
+     * @param level
+     * @private
+     */
+    _log(text, debug = false, level = 1) {
+        if (!debug || (debug && this.debug && level <= this.debugLevel)) {
+            console.log(text);
         }
     }
 

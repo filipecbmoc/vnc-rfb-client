@@ -207,7 +207,6 @@ class VncClient extends Events {
     requestFrameUpdate(full = false, incremental = 1, x = 0, y = 0, width = this.clientWidth, height = this.clientHeight) {
         if ((this._frameBufferReady || full) && this._connection && !this._rects && this._encodingsSent && !this._requestSent) {
 
-            console.log('Requesting Frame Update');
             this._requestSent = true;
             this._log('Requesting frame update.', true, 3);
 

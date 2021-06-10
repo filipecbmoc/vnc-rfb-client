@@ -1,6 +1,6 @@
 {
   "name": "vnc-rfb-client",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "dependencies": {},
   "main": "vncclient.js",
   "scripts": {

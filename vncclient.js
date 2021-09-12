@@ -480,6 +480,10 @@ class VncClient extends Events {
                 case serverMsgTypes.cutText:
                     await this._handleCutText();
                     break;
+
+                case serverMsgTypes.qemuAudio:
+                    await this._handleQemuAudio();
+                    break;
             }
         }
 
@@ -602,6 +606,26 @@ class VncClient extends Events {
         this.emit('colorMapUpdated', this._colorMap);
         this._socketBuffer.flush();
 
+    }
+
+    async _handleQemuAudio() {
+        this._socketBuffer.setOffset(2);
+        let operation = this._socketBuffer.readUInt16BE();
+        if(operation==2){
+    	    const length = this._socketBuffer.readUInt32BE();
+
+    	    this._log(`Audio received. Length: ${length}.`);
+
+    	    await this._socketBuffer.waitBytes(length);
+
+    	    let audioBuffer = [];
+    	    for(let i=0;i<length;i++)audioBuffer.push(this._socketBuffer.readUInt8());
+
+    	    this._audioData = audioBuffer;
+		}
+
+        this.emit('audioStream', this._audioData);
+        this._socketBuffer.flush();
     }
 
     /**

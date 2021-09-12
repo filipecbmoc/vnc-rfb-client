@@ -521,7 +521,10 @@ class VncClient extends Events {
             rect.height = this._socketBuffer.readUInt16BE();
             rect.encoding = this._socketBuffer.readInt32BE();
 
-            if (rect.encoding === encodings.pseudoCursor) {
+            if(rect.encoding === encodings.pseudoQemuAudio){
+				this.sendAudio(true);
+				this.sendAudioConfig(2,22500);
+			} else if (rect.encoding === encodings.pseudoCursor) {
                 const dataSize = rect.width * rect.height * (this.pixelFormat.bitsPerPixel / 8);
                 const bitmaskSize = Math.floor((rect.width + 7) / 8) * rect.height;
                 this._cursor.width = rect.width;
@@ -609,6 +612,7 @@ class VncClient extends Events {
     }
 
     async _handleQemuAudio() {
+		console.log(1234);
         this._socketBuffer.setOffset(2);
         let operation = this._socketBuffer.readUInt16BE();
         if(operation==2){
@@ -680,6 +684,7 @@ class VncClient extends Events {
         this._rects = 0
 
         this._colorMap = [];
+        this._audioData = [];
         this.fb = null;
 
         this._socketBuffer?.flush(false);
@@ -771,7 +776,7 @@ class VncClient extends Events {
 
     }
 
-    clientAudio(enable) {
+    sendAudio(enable) {
         const message = new Buffer(4);
         message.writeUInt8(clientMsgTypes.qemuAudio); // Message type
         message.writeUInt8(1, 1); // Submessage Type
@@ -779,12 +784,12 @@ class VncClient extends Events {
         this._connection.write(message);
     }
 
-    clientAudioConfig(channels, frequency) {
+    sendAudioConfig(channels, frequency) {
         const message = new Buffer(10);
         message.writeUInt8(clientMsgTypes.qemuAudio); // Message type
         message.writeUInt8(1, 1); // Submessage Type
         message.writeUInt16BE(2, 2); // Operation
-        message.writeUInt8(0/*U8*/, 4); // Sample Format
+        message.writeUInt8(4/*U32*/, 4); // Sample Format
         message.writeUInt8(channels, 5); // Number of Channels
         message.writeUInt32BE(frequency, 6); // Frequency
         this._connection.write(message);

@@ -624,7 +624,7 @@ class VncClient extends Events {
     	    await this._socketBuffer.waitBytes(length);
 
     	    let audioBuffer = [];
-    	    for(let i=0;i<length;i++)audioBuffer.push(this._socketBuffer.readUInt8());
+    	    for(let i=0;i<length/2;i++)audioBuffer.push(this._socketBuffer.readUInt16BE());
 
     	    this._audioData = audioBuffer;
 		}

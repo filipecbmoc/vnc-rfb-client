@@ -776,7 +776,17 @@ class VncClient extends Events {
         message.writeUInt8(clientMsgTypes.qemuAudio); // Message type
         message.writeUInt8(1, 1); // Submessage Type
         message.writeUInt16BE(enable?0:1, 2); // Operation
+        this._connection.write(message);
+    }
 
+    clientAudioConfig(channels, frequency) {
+        const message = new Buffer(8 + textBuffer.length);
+        message.writeUInt8(clientMsgTypes.qemuAudio); // Message type
+        message.writeUInt8(1, 1); // Submessage Type
+        message.writeUInt16BE(2, 2); // Operation
+        message.writeUInt8(0/*U8*/, 4); // Sample Format
+        message.writeUInt8(channels, 5); // Number of Channels
+        message.writeUInt32BE(frequency, 6); // Frequency
         this._connection.write(message);
     }
 

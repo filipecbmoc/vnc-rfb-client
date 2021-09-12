@@ -1,4 +1,4 @@
-const {versionString, encodings, serverMsgTypes} = require('./constants');
+const {versionString, encodings, serverMsgTypes, clientMsgTypes} = require('./constants');
 const net = require('net');
 const Events = require('events').EventEmitter;
 

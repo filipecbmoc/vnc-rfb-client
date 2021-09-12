@@ -523,7 +523,7 @@ class VncClient extends Events {
 
             if(rect.encoding === encodings.pseudoQemuAudio){
 				this.sendAudio(true);
-				this.sendAudioConfig(2,22500);//todo: add config values for changing this (future: setFrequency(...) to update mid thing)
+				this.sendAudioConfig(2,22050);//todo: add config values for changing this (future: setFrequency(...) to update mid thing)
 			} else if(rect.encoding === encodings.pseudoQemuPointerMotionChange){
 				console.log("HYPE: "+JSON.stringify(rect));
 			} else if (rect.encoding === encodings.pseudoCursor) {
@@ -614,7 +614,6 @@ class VncClient extends Events {
     }
 
     async _handleQemuAudio() {
-		console.log(1234);
         this._socketBuffer.setOffset(2);
         let operation = this._socketBuffer.readUInt16BE();
         if(operation==2){
@@ -791,7 +790,7 @@ class VncClient extends Events {
         message.writeUInt8(clientMsgTypes.qemuAudio); // Message type
         message.writeUInt8(1, 1); // Submessage Type
         message.writeUInt16BE(2, 2); // Operation
-        message.writeUInt8(4/*U32*/, 4); // Sample Format
+        message.writeUInt8(0/*U8*/, 4); // Sample Format
         message.writeUInt8(channels, 5); // Number of Channels
         message.writeUInt32BE(frequency, 6); // Frequency
         this._connection.write(message);

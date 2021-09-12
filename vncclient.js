@@ -525,7 +525,7 @@ class VncClient extends Events {
 				this.sendAudio(true);
 				this.sendAudioConfig(2,22050);//todo: add config values for changing this (future: setFrequency(...) to update mid thing)
 			} else if(rect.encoding === encodings.pseudoQemuPointerMotionChange){
-				console.log("HYPE: "+JSON.stringify(rect));
+				this._relativePointer=rect.x==0;
 			} else if (rect.encoding === encodings.pseudoCursor) {
                 const dataSize = rect.width * rect.height * (this.pixelFormat.bitsPerPixel / 8);
                 const bitmaskSize = Math.floor((rect.width + 7) / 8) * rect.height;
@@ -751,8 +751,9 @@ class VncClient extends Events {
         const message = new Buffer(6);
         message.writeUInt8(5); // Message type
         message.writeUInt8(buttonMask, 1); // Button Mask
-        message.writeUInt16BE(xPosition, 2); // X Position
-        message.writeUInt16BE(yPosition, 4); // Y Position
+        const reladd=this._relativePointer?0x7FFF:0;
+        message.writeUInt16BE(xPosition+reladd, 2); // X Position
+        message.writeUInt16BE(yPosition+reladd, 4); // Y Position
 
         this._connection.write(message);
 

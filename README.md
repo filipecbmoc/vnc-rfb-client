@@ -1,7 +1,7 @@
 # vnc-rfb-client: ayunami2000's fork
 ## includes support for:
 - qemu audio (PCM) (user customization (e.g. num channels, frequency) WIP)
-- qemu relative pointer (WIP)
+- qemu relative pointer
 
 
 

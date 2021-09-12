@@ -523,7 +523,9 @@ class VncClient extends Events {
 
             if(rect.encoding === encodings.pseudoQemuAudio){
 				this.sendAudio(true);
-				this.sendAudioConfig(2,22500);
+				this.sendAudioConfig(2,22500);//todo: add config values for changing this (future: setFrequency(...) to update mid thing)
+			} else if(rect.encoding === encodings.pseudoQemuPointerMotionChange){
+				console.log("HYPE: "+JSON.stringify(rect));
 			} else if (rect.encoding === encodings.pseudoCursor) {
                 const dataSize = rect.width * rect.height * (this.pixelFormat.bitsPerPixel / 8);
                 const bitmaskSize = Math.floor((rect.width + 7) / 8) * rect.height;
@@ -618,7 +620,7 @@ class VncClient extends Events {
         if(operation==2){
     	    const length = this._socketBuffer.readUInt32BE();
 
-    	    this._log(`Audio received. Length: ${length}.`);
+    	    //this._log(`Audio received. Length: ${length}.`);
 
     	    await this._socketBuffer.waitBytes(length);
 

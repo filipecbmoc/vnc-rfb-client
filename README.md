@@ -1,11 +1,3 @@
-# vnc-rfb-client: ayunami2000's fork
-## includes support for:
-- qemu audio (PCM) (user customization (e.g. num channels, frequency) WIP)
-- qemu relative pointer
-
-
-
-
 <!--
 *** Thanks for checking out the Best-README-Template. If you have a suggestion
 *** that would make this better, please fork the repo and create a pull request
@@ -46,6 +38,12 @@
     <a href="https://github.com/filipecbmoc/vnc-rfb-client/issues">Report Bug or Request Feature</a>
   </p>
 </p>
+
+<!-- CONTRIBUTIONS -->
+## User Contributions
+### ayunami2000
+- qemu audio (PCM) (user customization (e.g. num channels, frequency) WIP)
+- qemu relative pointer
 
 
 <!-- GETTING STARTED -->

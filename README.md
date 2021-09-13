@@ -42,8 +42,9 @@
 <!-- CONTRIBUTIONS -->
 ## User Contributions
 ### ayunami2000
-- qemu audio (PCM) (user customization (e.g. num channels, frequency) WIP)
+- qemu audio (PCM)
 - qemu relative pointer
+- documentation for these WIP
 
 
 <!-- GETTING STARTED -->

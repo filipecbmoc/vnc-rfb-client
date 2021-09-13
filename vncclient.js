@@ -67,6 +67,9 @@ class VncClient extends Events {
             encodings.raw,
             encodings.pseudoDesktopSize
         ];
+	
+	this._audioChannels = options.audioChannels || 2;
+	this._audioFrequency = options.audioFrequency || 22050;
 
         this._rects = 0;
         this._decoders = {};
@@ -523,7 +526,7 @@ class VncClient extends Events {
 
             if(rect.encoding === encodings.pseudoQemuAudio){
 				this.sendAudio(true);
-				this.sendAudioConfig(2,22050);//todo: add config values for changing this (future: setFrequency(...) to update mid thing)
+				this.sendAudioConfig(this._audioChannels,this._audioFrequency);//todo: future: setFrequency(...) to update mid thing
 			} else if(rect.encoding === encodings.pseudoQemuPointerMotionChange){
 				this._relativePointer=rect.x==0;
 			} else if (rect.encoding === encodings.pseudoCursor) {
@@ -655,6 +658,9 @@ class VncClient extends Events {
         this._version = '';
 
         this._password = '';
+	
+	this._audioChannels=2;
+	this._audioFrequency=22050;
 
         this._handshaked = false;
 

@@ -104,7 +104,7 @@ class VncClient extends Events {
      * @param fps {number} - Number of update requests send by second
      */
     changeFps(fps) {
-        if (fps && !Number.isNaN(fps)) {
+        if (!Number.isNaN(fps)) {
             this._fps = Number(fps);
             this._timerInterval = this._fps > 0 ? 1000 / this._fps : 0;
 

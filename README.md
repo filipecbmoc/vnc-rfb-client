@@ -23,7 +23,6 @@
 [![Forks][forks-shield]][forks-url]
 [![Stargazers][stars-shield]][stars-url]
 [![Issues][issues-shield]][issues-url]
-[![MIT License][license-shield]][license-url]
 [![LinkedIn][linkedin-shield]][linkedin-url]
 
 
@@ -77,6 +76,7 @@ const initOptions = {
         VncClient.consts.encodings.hextile,
         VncClient.consts.encodings.raw,
         VncClient.consts.encodings.pseudoDesktopSize,
+        VncClient.consts.encodings.pseudoCursor
     ],
    debugLevel: 1 // Verbosity level (1 - 5) when debug is set to true
 };
@@ -163,7 +163,7 @@ client.changeFps(1);
 client.connect({host: '127.0.0.1', port: 5900, password: 'abc123'});
 
 client.on('frameUpdated', (data) => {
-   new Jimp({width: client.clientWidth, height: client.clientHeight, data}, (err, image) => {
+   new Jimp({width: client.clientWidth, height: client.clientHeight, data: client.getFb()}, (err, image) => {
       if (err) {
          console.log(err);
       }
@@ -210,7 +210,7 @@ process.on('SIGINT', function () {
 function timer() {
    timerRef = setTimeout(() => {
       timer();
-      out?.stdin?.write(client.fb);
+      out?.stdin?.write(client.getFb());
    }, 1000 / fps);
 }
 
@@ -280,6 +280,9 @@ client.sendPointerEvent(xPosition, yPosition, button1, button2, button3, button4
 client.clientCutText(text);
 
 client.resetState(); // Reset the state of the client, clear the frame buffer and purge all data
+
+client.getFb(); // Returns the framebuffer with cursor printed to it if using Cursor Pseudo Encoding
+
 ```
 
 <!-- ROADMAP -->
@@ -295,12 +298,14 @@ CopyRect <br>
 Hextile <br>
 ZRLE <br>
 PseudoDesktopSize <br>
+Pseudo Cursor Encoding <br>
+QEMU Audio <br>
+QEMU Relative Pointer <br>
 3.7 and 3.8 protocol implementations
 
 ### TODO:
 
 Tight Encoding <br>
-Pseudo Cursor Encoding <br>
 Save session data to file <br>
 Replay session from rect data saved to file
 
@@ -323,19 +328,19 @@ Project Link: [https://github.com/filipecbmoc/vnc-rfb-client](https://github.com
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
 
-[contributors-shield]: https://img.shields.io/github/contributors/github_username/repo.svg?style=for-the-badge
+[contributors-shield]: https://img.shields.io/github/contributors/filipecbmoc/vnc-rfb-client?style=for-the-badge
 
 [contributors-url]: https://github.com/filipecbmoc/vnc-rfb-client/graphs/contributors
 
-[forks-shield]: https://img.shields.io/github/forks/github_username/repo.svg?style=for-the-badge
+[forks-shield]: https://img.shields.io/github/forks/filipecbmoc/vnc-rfb-client?style=for-the-badge
 
 [forks-url]: https://github.com/filipecbmoc/vnc-rfb-client/network/members
 
-[stars-shield]: https://img.shields.io/github/stars/github_username/repo.svg?style=for-the-badge
+[stars-shield]: https://img.shields.io/github/stars/filipecbmoc/vnc-rfb-client?style=for-the-badge
 
 [stars-url]: https://github.com/filipecbmoc/vnc-rfb-client/stargazers
 
-[issues-shield]: https://img.shields.io/github/issues/github_username/repo.svg?style=for-the-badge
+[issues-shield]: https://img.shields.io/github/issues/filipecbmoc/vnc-rfb-client?style=for-the-badge
 
 [issues-url]: https://github.com/filipecbmoc/vnc-rfb-client/issues
 

@@ -69,8 +69,8 @@ class VncClient extends Events {
             encodings.pseudoDesktopSize
         ];
 
-	this._audioChannels = options.audioChannels || 2;
-	this._audioFrequency = options.audioFrequency || 22050;
+        this._audioChannels = options.audioChannels || 2;
+        this._audioFrequency = options.audioFrequency || 22050;
 
         this._rects = 0;
         this._decoders = {};
@@ -553,12 +553,12 @@ class VncClient extends Events {
             rect.height = this._socketBuffer.readUInt16BE();
             rect.encoding = this._socketBuffer.readInt32BE();
 
-            if(rect.encoding === encodings.pseudoQemuAudio){
-				this.sendAudio(true);
-				this.sendAudioConfig(this._audioChannels,this._audioFrequency);//todo: future: setFrequency(...) to update mid thing
-			} else if(rect.encoding === encodings.pseudoQemuPointerMotionChange){
-				this._relativePointer=rect.x==0;
-			} else if (rect.encoding === encodings.pseudoCursor) {
+            if (rect.encoding === encodings.pseudoQemuAudio) {
+                this.sendAudio(true);
+                this.sendAudioConfig(this._audioChannels, this._audioFrequency);//todo: future: setFrequency(...) to update mid thing
+            } else if (rect.encoding === encodings.pseudoQemuPointerMotionChange) {
+                this._relativePointer = rect.x == 0;
+            } else if (rect.encoding === encodings.pseudoCursor) {
                 const dataSize = rect.width * rect.height * (this.pixelFormat.bitsPerPixel / 8);
                 const bitmaskSize = Math.floor((rect.width + 7) / 8) * rect.height;
                 this._cursor.width = rect.width;
@@ -644,18 +644,18 @@ class VncClient extends Events {
     async _handleQemuAudio() {
         this._socketBuffer.setOffset(2);
         let operation = this._socketBuffer.readUInt16BE();
-        if(operation==2){
-    	    const length = this._socketBuffer.readUInt32BE();
+        if (operation == 2) {
+            const length = this._socketBuffer.readUInt32BE();
 
-    	    //this._log(`Audio received. Length: ${length}.`);
+            //this._log(`Audio received. Length: ${length}.`);
 
-    	    await this._socketBuffer.waitBytes(length);
+            await this._socketBuffer.waitBytes(length);
 
-    	    let audioBuffer = [];
-    	    for(let i=0;i<length/2;i++)audioBuffer.push(this._socketBuffer.readUInt16BE());
+            let audioBuffer = [];
+            for (let i = 0; i < length / 2; i++) audioBuffer.push(this._socketBuffer.readUInt16BE());
 
-    	    this._audioData = audioBuffer;
-		}
+            this._audioData = audioBuffer;
+        }
 
         this.emit('audioStream', this._audioData);
         this._socketBuffer.flush();
@@ -684,8 +684,8 @@ class VncClient extends Events {
 
         this._password = '';
 
-	this._audioChannels=2;
-	this._audioFrequency=22050;
+        this._audioChannels = 2;
+        this._audioFrequency = 22050;
 
         this._handshaked = false;
 
@@ -731,9 +731,54 @@ class VncClient extends Events {
             x: 0,
             y: 0,
             cursorPixels: null,
-            bitmask: null
+            bitmask: null,
+            posX: 0,
+            posY: 0
         }
 
+    }
+
+    /**
+     * Get the frame buffer with de cursor printed to it if using Cursor Pseudo Encoding
+     * @returns {null|Buffer|*}
+     */
+    getFb() {
+        if (!this._cursor.width) {
+            // If there is no cursor, just return de framebuffer
+            return this.fb;
+        } else {
+            // If there is a cursor, draw a cursor on the framebuffer and return the final result
+            const tempFb = new Buffer.from(this.fb);
+            for (let h = 0; h < this._cursor.height; h++) {
+                for (let w = 0; w < this._cursor.width; w++) {
+                    const fbBytePosOffset = this._getPixelBytePos(this._cursor.posX + w, this._cursor.posY + h, this.clientWidth, this.clientHeight);
+                    const cursorBytePosOffset = this._getPixelBytePos(w, h, this._cursor.width, this._cursor.height);
+                    const bitmapByte = this._cursor.bitmask.slice(Math.floor(cursorBytePosOffset / 4 / 8), Math.floor(cursorBytePosOffset / 4 / 8) + 1);
+                    const bitmapBit = (cursorBytePosOffset / 4) % 8;
+                    const activePixel = bitmapBit === 0 ? bitmapByte[0] & 128 : bitmapBit === 1 ? bitmapByte[0] & 64 :
+                        bitmapBit === 2 ? bitmapByte[0] & 32 : bitmapBit === 3 ? bitmapByte[0] & 16 :
+                            bitmapBit === 4 ? bitmapByte[0] & 8 : bitmapBit === 5 ? bitmapByte[0] & 4 :
+                                bitmapBit === 6 ? bitmapByte[0] & 2 : bitmapByte[0] & 1;
+
+                    if (activePixel) {
+                        if (this.pixelFormat.bitsPerPixel === 8) {
+                            const index = this._cursor.cursorPixels.readUInt8(cursorBytePosOffset);
+                            const color = this._colorMap[index];
+                            tempFb.writeIntBE(color, fbBytePosOffset, 4);
+                        } else {
+                            const bytesLength = this.pixelFormat.bitsPerPixel / 8;
+                            const color = this._cursor.cursorPixels.readIntBE(cursorBytePosOffset, bytesLength);
+                            tempFb.writeIntBE(color, fbBytePosOffset, bytesLength);
+                        }
+                    }
+                }
+            }
+            return tempFb;
+        }
+    }
+
+    _getPixelBytePos(x, y, width, height) {
+        return ((y * width) + x) * 4;
     }
 
     /**
@@ -744,7 +789,7 @@ class VncClient extends Events {
     sendKeyEvent(key, down = false) {
 
         const message = new Buffer(8);
-        message.writeUInt8(4); // Message type
+        message.writeUInt8(clientMsgTypes.keyEvent); // Message type
         message.writeUInt8(down ? 1 : 0, 1); // Down flag
         message.writeUInt8(0, 2); // Padding
         message.writeUInt8(0, 3); // Padding
@@ -784,11 +829,14 @@ class VncClient extends Events {
         buttonMask += button1 ? 1 : 0;
 
         const message = new Buffer(6);
-        message.writeUInt8(5); // Message type
+        message.writeUInt8(clientMsgTypes.pointerEvent); // Message type
         message.writeUInt8(buttonMask, 1); // Button Mask
-        const reladd=this._relativePointer?0x7FFF:0;
-        message.writeUInt16BE(xPosition+reladd, 2); // X Position
-        message.writeUInt16BE(yPosition+reladd, 4); // Y Position
+        const reladd = this._relativePointer ? 0x7FFF : 0;
+        message.writeUInt16BE(xPosition + reladd, 2); // X Position
+        message.writeUInt16BE(yPosition + reladd, 4); // Y Position
+
+        this._cursor.posX = xPosition;
+        this._cursor.posY = yPosition;
 
         this.sendData(message, false);
 
@@ -802,7 +850,7 @@ class VncClient extends Events {
 
         const textBuffer = new Buffer.from(text, 'latin1');
         const message = new Buffer(8 + textBuffer.length);
-        message.writeUInt8(6); // Message type
+        message.writeUInt8(clientMsgTypes.cutText); // Message type
         message.writeUInt8(0, 1); // Padding
         message.writeUInt8(0, 2); // Padding
         message.writeUInt8(0, 3); // Padding
@@ -817,8 +865,8 @@ class VncClient extends Events {
         const message = new Buffer(4);
         message.writeUInt8(clientMsgTypes.qemuAudio); // Message type
         message.writeUInt8(1, 1); // Submessage Type
-        message.writeUInt16BE(enable?0:1, 2); // Operation
-        this._connection.write(message);
+        message.writeUInt16BE(enable ? 0 : 1, 2); // Operation
+        this.sendData(message);
     }
 
     sendAudioConfig(channels, frequency) {
@@ -829,7 +877,7 @@ class VncClient extends Events {
         message.writeUInt8(0/*U8*/, 4); // Sample Format
         message.writeUInt8(channels, 5); // Number of Channels
         message.writeUInt32BE(frequency, 6); // Frequency
-        this._connection.write(message);
+        this.sendData(message);
     }
 
     /**

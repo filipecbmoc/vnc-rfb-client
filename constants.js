@@ -8,12 +8,14 @@ const consts = {
         keyEvent: 4,
         pointerEvent: 5,
         cutText: 6,
+        qemuAudio: 255,
     },
     serverMsgTypes: {
         fbUpdate: 0,
         setColorMap: 1,
         bell: 2,
         cutText: 3,
+        qemuAudio: 255,
     },
     versionString: {
         V3_003: 'RFB 003.003\n',
@@ -34,6 +36,8 @@ const consts = {
         h264: 50,
         pseudoCursor: -239,
         pseudoDesktopSize: -223,
+        pseudoQemuPointerMotionChange: -257,
+        pseudoQemuAudio: -259,
     },
     security: {
         None: 1,

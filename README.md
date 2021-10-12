@@ -39,6 +39,13 @@
   </p>
 </p>
 
+<!-- CONTRIBUTIONS -->
+## User Contributions
+### ayunami2000
+- qemu audio (PCM)
+- qemu relative pointer
+- documentation for these WIP
+
 
 <!-- GETTING STARTED -->
 

@@ -1,4 +1,4 @@
-const {versionString, encodings, serverMsgTypes} = require('./constants');
+const {versionString, encodings, serverMsgTypes, clientMsgTypes} = require('./constants');
 const net = require('net');
 const Events = require('events').EventEmitter;
 
@@ -67,6 +67,9 @@ class VncClient extends Events {
             encodings.raw,
             encodings.pseudoDesktopSize
         ];
+	
+	this._audioChannels = options.audioChannels || 2;
+	this._audioFrequency = options.audioFrequency || 22050;
 
         this._rects = 0;
         this._decoders = {};
@@ -101,7 +104,7 @@ class VncClient extends Events {
      * @param fps {number} - Number of update requests send by second
      */
     changeFps(fps) {
-        if (fps && !Number.isNaN(fps)) {
+        if (!Number.isNaN(fps)) {
             this._fps = Number(fps);
             this._timerInterval = this._fps > 0 ? 1000 / this._fps : 0;
 
@@ -480,6 +483,10 @@ class VncClient extends Events {
                 case serverMsgTypes.cutText:
                     await this._handleCutText();
                     break;
+
+                case serverMsgTypes.qemuAudio:
+                    await this._handleQemuAudio();
+                    break;
             }
         }
 
@@ -517,7 +524,12 @@ class VncClient extends Events {
             rect.height = this._socketBuffer.readUInt16BE();
             rect.encoding = this._socketBuffer.readInt32BE();
 
-            if (rect.encoding === encodings.pseudoCursor) {
+            if(rect.encoding === encodings.pseudoQemuAudio){
+				this.sendAudio(true);
+				this.sendAudioConfig(this._audioChannels,this._audioFrequency);//todo: future: setFrequency(...) to update mid thing
+			} else if(rect.encoding === encodings.pseudoQemuPointerMotionChange){
+				this._relativePointer=rect.x==0;
+			} else if (rect.encoding === encodings.pseudoCursor) {
                 const dataSize = rect.width * rect.height * (this.pixelFormat.bitsPerPixel / 8);
                 const bitmaskSize = Math.floor((rect.width + 7) / 8) * rect.height;
                 this._cursor.width = rect.width;
@@ -604,6 +616,26 @@ class VncClient extends Events {
 
     }
 
+    async _handleQemuAudio() {
+        this._socketBuffer.setOffset(2);
+        let operation = this._socketBuffer.readUInt16BE();
+        if(operation==2){
+    	    const length = this._socketBuffer.readUInt32BE();
+
+    	    //this._log(`Audio received. Length: ${length}.`);
+
+    	    await this._socketBuffer.waitBytes(length);
+
+    	    let audioBuffer = [];
+    	    for(let i=0;i<length/2;i++)audioBuffer.push(this._socketBuffer.readUInt16BE());
+
+    	    this._audioData = audioBuffer;
+		}
+
+        this.emit('audioStream', this._audioData);
+        this._socketBuffer.flush();
+    }
+
     /**
      * Reset the class state
      */
@@ -626,6 +658,9 @@ class VncClient extends Events {
         this._version = '';
 
         this._password = '';
+	
+	this._audioChannels=2;
+	this._audioFrequency=22050;
 
         this._handshaked = false;
 
@@ -656,6 +691,7 @@ class VncClient extends Events {
         this._rects = 0
 
         this._colorMap = [];
+        this._audioData = [];
         this.fb = null;
 
         this._socketBuffer?.flush(false);
@@ -721,8 +757,9 @@ class VncClient extends Events {
         const message = new Buffer(6);
         message.writeUInt8(5); // Message type
         message.writeUInt8(buttonMask, 1); // Button Mask
-        message.writeUInt16BE(xPosition, 2); // X Position
-        message.writeUInt16BE(yPosition, 4); // Y Position
+        const reladd=this._relativePointer?0x7FFF:0;
+        message.writeUInt16BE(xPosition+reladd, 2); // X Position
+        message.writeUInt16BE(yPosition+reladd, 4); // Y Position
 
         this._connection.write(message);
 
@@ -745,6 +782,25 @@ class VncClient extends Events {
 
         this._connection.write(message);
 
+    }
+
+    sendAudio(enable) {
+        const message = new Buffer(4);
+        message.writeUInt8(clientMsgTypes.qemuAudio); // Message type
+        message.writeUInt8(1, 1); // Submessage Type
+        message.writeUInt16BE(enable?0:1, 2); // Operation
+        this._connection.write(message);
+    }
+
+    sendAudioConfig(channels, frequency) {
+        const message = new Buffer(10);
+        message.writeUInt8(clientMsgTypes.qemuAudio); // Message type
+        message.writeUInt8(1, 1); // Submessage Type
+        message.writeUInt16BE(2, 2); // Operation
+        message.writeUInt8(0/*U8*/, 4); // Sample Format
+        message.writeUInt8(channels, 5); // Number of Channels
+        message.writeUInt32BE(frequency, 6); // Frequency
+        this._connection.write(message);
     }
 
     /**
